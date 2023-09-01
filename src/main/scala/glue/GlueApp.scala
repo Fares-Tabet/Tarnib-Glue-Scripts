@@ -39,6 +39,7 @@ object GlueApp {
     }
 
     val getFiguresCountUdf: UserDefinedFunction = udf((cards: String) => getFiguresCount(cards))
+    val getSuitsWithOverOneFigureUdf = udf((cards: String) => getSuitsWithOverOneFigure(cards))
     val getSuitsWithOverFiveCardsCountUdf: UserDefinedFunction = udf(
       (cards: String) => getSuitsWithOverFiveCardsCount(cards))
 
@@ -50,10 +51,14 @@ object GlueApp {
       .withColumn("player_2_figures_count", getFiguresCountUdf(col("player_2_cards")))
       .withColumn("player_3_figures_count", getFiguresCountUdf(col("player_3_cards")))
       .withColumn("player_4_figures_count", getFiguresCountUdf(col("player_4_cards")))
-      .withColumn("player_1_suits_over_five_cards_count", getSuitsWithOverFiveCardsCountUdf(col("player_1_cards")))
-      .withColumn("player_2_suits_over_five_cards_count", getSuitsWithOverFiveCardsCountUdf(col("player_2_cards")))
-      .withColumn("player_3_suits_over_five_cards_count", getSuitsWithOverFiveCardsCountUdf(col("player_3_cards")))
-      .withColumn("player_4_suits_over_five_cards_count", getSuitsWithOverFiveCardsCountUdf(col("player_4_cards")))
+      .withColumn("player_1_suits_over_five_cards", getSuitsWithOverFiveCardsCountUdf(col("player_1_cards")))
+      .withColumn("player_2_suits_over_five_cards", getSuitsWithOverFiveCardsCountUdf(col("player_2_cards")))
+      .withColumn("player_3_suits_over_five_cards", getSuitsWithOverFiveCardsCountUdf(col("player_3_cards")))
+      .withColumn("player_4_suits_over_five_cards", getSuitsWithOverFiveCardsCountUdf(col("player_4_cards")))
+      .withColumn("player_1_suits_with_over_one_figures", getSuitsWithOverOneFigureUdf(col("player_1_cards")))
+      .withColumn("player_2_suits_with_over_one_figures", getSuitsWithOverOneFigureUdf(col("player_2_cards")))
+      .withColumn("player_3_suits_with_over_one_figures", getSuitsWithOverOneFigureUdf(col("player_3_cards")))
+      .withColumn("player_4_suits_with_over_one_figures", getSuitsWithOverOneFigureUdf(col("player_4_cards")))
 
     jsonDataFrame.show(10)
 
@@ -83,6 +88,25 @@ object GlueApp {
   def getSuitsWithOverFiveCardsCount(cards: String): Int = {
     val occurrences = Seq("of_spades", "of_hearts", "of_clubs", "of_diamonds")
     occurrences.map(card => if (card.r.findAllIn(cards).length > 5) 1 else 0).sum
+  }
+
+  /**
+    * Count occurrence of suits with over a figure (Ace included) in a players cards
+    * @param cards - cards array string
+    */
+  def getSuitsWithOverOneFigure(cards: String): Int = {
+    val heartsFigures = Seq("14_of_hearts", "13_of_hearts", "12_of_hearts", "11_of_hearts")
+    val spadeFigures = Seq("14_of_spades", "13_of_spades", "12_of_spades", "11_of_spades")
+    val clubsFigures = Seq("14_of_clubs", "13_of_clubs", "12_of_clubs", "11_of_clubs")
+    val diamondsFigures = Seq("14_of_diamonds", "13_of_diamonds", "12_of_diamonds", "11_of_diamonds")
+    val figures = Seq(heartsFigures, diamondsFigures, clubsFigures, spadeFigures)
+
+    figures
+      .map(suit => {
+        val figuresCountInSuit = suit.map(figure => figure.r.findAllIn(cards).length).sum
+        if (figuresCountInSuit > 1) 1 else 0
+      })
+      .sum
   }
 
 }
