@@ -50,4 +50,25 @@ class GlueAppSpec extends AnyFlatSpec {
     val suits_with_over_2_figures_count = GlueApp.getSuitsWithOverOneFigure(player_cards)
     assert(suits_with_over_2_figures_count == 3)
   }
+
+  it should "count a teams figures" in {
+    val player_cards =
+      "[\"10_of_hearts\",\"2_of_hearts\",\"14_of_spades\",\"13_of_spades\",\"12_of_spades\",\"14_of_diamonds\",\"13_of_diamonds\"" +
+        "\"12_of_diamonds\",\"10_of_diamonds\",\"8_of_diamonds\",\"3_of_diamonds\",\"14_of_clubs\",\"12_of_clubs\"," +
+        "\"8_of_clubs\"]"
+    val player_partner_cards =
+      "[\"10_of_hearts\",\"2_of_hearts\",\"14_of_spades\",\"13_of_spades\",\"12_of_spades\",\"14_of_diamonds\",\"13_of_diamonds\"" +
+        "\"12_of_diamonds\",\"10_of_diamonds\",\"8_of_diamonds\",\"3_of_diamonds\",\"14_of_clubs\",\"12_of_clubs\"," +
+        "\"8_of_clubs\"]"
+    val team_figures_count = GlueApp.getTeamFiguresCount(player_cards, player_partner_cards)
+    assert(team_figures_count == 16)
+  }
+
+  it should "know if a player had over 2 aces" in {
+    val player_cards =
+      "[\"10_of_hearts\",\"2_of_hearts\",\"14_of_spades\",\"13_of_spades\",\"12_of_spades\",\"14_of_diamonds\",\"13_of_diamonds\"" +
+        "\"12_of_diamonds\",\"10_of_diamonds\",\"8_of_diamonds\",\"3_of_diamonds\",\"14_of_clubs\",\"12_of_clubs\"," +
+        "\"8_of_clubs\"]"
+    assert(GlueApp.hasOverTwoAces(player_cards))
+  }
 }
