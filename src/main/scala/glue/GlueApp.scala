@@ -37,11 +37,14 @@ object GlueApp {
       Job.init(if (args("JOB_NAME") != null) args("JOB_NAME") else "test", glueContext, args.asJava)
     }
 
+    // Create User Defined functions to be used when adding new columns to the dataframe
     val getFiguresCountUdf: UserDefinedFunction = udf((cards: String) => getFiguresCount(cards))
     val getTeamFiguresCountUdf: UserDefinedFunction = udf(
       (cards: String, partnerCards: String) => getTeamFiguresCount(cards, partnerCards))
     val getSuitsWithOverOneFigureUdf = udf((cards: String) => getSuitsWithOverOneFigure(cards))
     val getOverTwoAcesCount = udf((cards: String) => if (hasOverTwoAces(cards)) 1 else 0)
+    val getLessThanTwoFiguresCount = udf((cards: String) => if (hadLessThanTwoFigures(cards)) 1 else 0)
+    val getFigureScoreUdf = udf((cards: String) => getFiguresScore(cards))
     val getSuitsWithOverFiveCardsCountUdf: UserDefinedFunction = udf(
       (cards: String) => getSuitsWithOverFiveCardsCount(cards))
 
@@ -80,6 +83,34 @@ object GlueApp {
           .when(lower(col("player_2")) === "jemba", getFiguresCountUdf(col("player_2_cards")))
           .when(lower(col("player_3")) === "jemba", getFiguresCountUdf(col("player_3_cards")))
           .when(lower(col("player_4")) === "jemba", getFiguresCountUdf(col("player_4_cards")))
+      )
+      .withColumn(
+        "rayan_figures_score",
+        when(lower(col("player_1")) === "mugiwara", getFigureScoreUdf(col("player_1_cards")))
+          .when(lower(col("player_2")) === "mugiwara", getFigureScoreUdf(col("player_2_cards")))
+          .when(lower(col("player_3")) === "mugiwara", getFigureScoreUdf(col("player_3_cards")))
+          .when(lower(col("player_4")) === "mugiwara", getFigureScoreUdf(col("player_4_cards")))
+      )
+      .withColumn(
+        "fares_figures_score",
+        when(lower(col("player_1")) === "blegess", getFigureScoreUdf(col("player_1_cards")))
+          .when(lower(col("player_2")) === "blegess", getFigureScoreUdf(col("player_2_cards")))
+          .when(lower(col("player_3")) === "blegess", getFigureScoreUdf(col("player_3_cards")))
+          .when(lower(col("player_4")) === "blegess", getFigureScoreUdf(col("player_4_cards")))
+      )
+      .withColumn(
+        "jack_figures_score",
+        when(lower(col("player_1")) === "wave master", getFigureScoreUdf(col("player_1_cards")))
+          .when(lower(col("player_2")) === "wave master", getFigureScoreUdf(col("player_2_cards")))
+          .when(lower(col("player_3")) === "wave master", getFigureScoreUdf(col("player_3_cards")))
+          .when(lower(col("player_4")) === "wave master", getFigureScoreUdf(col("player_4_cards")))
+      )
+      .withColumn(
+        "jad_figures_score",
+        when(lower(col("player_1")) === "jemba", getFigureScoreUdf(col("player_1_cards")))
+          .when(lower(col("player_2")) === "jemba", getFigureScoreUdf(col("player_2_cards")))
+          .when(lower(col("player_3")) === "jemba", getFigureScoreUdf(col("player_3_cards")))
+          .when(lower(col("player_4")) === "jemba", getFigureScoreUdf(col("player_4_cards")))
       )
       .withColumn(
         "rayan_team_figures_count",
@@ -136,6 +167,34 @@ object GlueApp {
           .when(lower(col("player_2")) === "jemba", getOverTwoAcesCount(col("player_2_cards")))
           .when(lower(col("player_3")) === "jemba", getOverTwoAcesCount(col("player_3_cards")))
           .when(lower(col("player_4")) === "jemba", getOverTwoAcesCount(col("player_4_cards")))
+      )
+      .withColumn(
+        "rayan_rounds_with_less_than_two_figures",
+        when(lower(col("player_1")) === "mugiwara", getLessThanTwoFiguresCount(col("player_1_cards")))
+          .when(lower(col("player_2")) === "mugiwara", getLessThanTwoFiguresCount(col("player_2_cards")))
+          .when(lower(col("player_3")) === "mugiwara", getLessThanTwoFiguresCount(col("player_3_cards")))
+          .when(lower(col("player_4")) === "mugiwara", getLessThanTwoFiguresCount(col("player_4_cards")))
+      )
+      .withColumn(
+        "fares_rounds_with_less_than_two_figures",
+        when(lower(col("player_1")) === "blegess", getLessThanTwoFiguresCount(col("player_1_cards")))
+          .when(lower(col("player_2")) === "blegess", getLessThanTwoFiguresCount(col("player_2_cards")))
+          .when(lower(col("player_3")) === "blegess", getLessThanTwoFiguresCount(col("player_3_cards")))
+          .when(lower(col("player_4")) === "blegess", getLessThanTwoFiguresCount(col("player_4_cards")))
+      )
+      .withColumn(
+        "jack_rounds_with_less_than_two_figures",
+        when(lower(col("player_1")) === "wave master", getLessThanTwoFiguresCount(col("player_1_cards")))
+          .when(lower(col("player_2")) === "wave master", getLessThanTwoFiguresCount(col("player_2_cards")))
+          .when(lower(col("player_3")) === "wave master", getLessThanTwoFiguresCount(col("player_3_cards")))
+          .when(lower(col("player_4")) === "wave master", getLessThanTwoFiguresCount(col("player_4_cards")))
+      )
+      .withColumn(
+        "jad_rounds_with_less_than_two_figures",
+        when(lower(col("player_1")) === "jemba", getLessThanTwoFiguresCount(col("player_1_cards")))
+          .when(lower(col("player_2")) === "jemba", getLessThanTwoFiguresCount(col("player_2_cards")))
+          .when(lower(col("player_3")) === "jemba", getLessThanTwoFiguresCount(col("player_3_cards")))
+          .when(lower(col("player_4")) === "jemba", getLessThanTwoFiguresCount(col("player_4_cards")))
       )
       .withColumn(
         "rayan_suits_over_five_cards",
@@ -204,10 +263,18 @@ object GlueApp {
         "fares_figures_count",
         "jack_figures_count",
         "jad_figures_count",
+        "rayan_figures_score",
+        "fares_figures_score",
+        "jack_figures_score",
+        "jad_figures_score",
         "rayan_team_figures_count",
         "fares_team_figures_count",
         "jad_team_figures_count",
         "jack_team_figures_count",
+        "rayan_rounds_with_less_than_two_figures",
+        "fares_rounds_with_less_than_two_figures",
+        "jack_rounds_with_less_than_two_figures",
+        "jad_rounds_with_less_than_two_figures",
         "rayan_over_two_aces_count",
         "fares_over_two_aces_count",
         "jack_over_two_aces_count",
@@ -291,6 +358,35 @@ object GlueApp {
     */
   def hasOverTwoAces(cards: String): Boolean = {
     "14".r.findAllIn(cards).length > 2
+  }
+
+  /**
+    * Get score of a players figures
+    * J = 1, Q = 2, K = 3, A = 4
+    * @param cards
+    */
+  def getFiguresScore(cards: String): Int = {
+    val occurrences = Seq("11", "12", "13", "14")
+    occurrences.map(card => card.r.findAllIn(cards).length * (occurrences.indexOf(card) + 1)).sum
+  }
+
+  /**
+    * Returns true if player had less than 2 figures, false otherwise
+    * @param cards
+    */
+  def hadLessThanTwoFigures(cards: String): Boolean = {
+    getFiguresCount(cards) < 2
+  }
+
+  /**
+    * Count figures of the chosen tarnib
+    * @param cards
+    * @param tarnib
+    */
+  // TODO: Add this to the dataframe
+  def getTarnibFiguresCount(cards: String, tarnib: String): Int = {
+    val figures = Seq(s"11_of_$tarnib", s"12_of_$tarnib", s"13_of_$tarnib", s"14_of_$tarnib")
+    figures.map(card => card.r.findAllIn(cards).length).sum
   }
 
 }

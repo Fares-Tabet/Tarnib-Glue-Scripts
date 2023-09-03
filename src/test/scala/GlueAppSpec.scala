@@ -71,4 +71,30 @@ class GlueAppSpec extends AnyFlatSpec {
         "\"8_of_clubs\"]"
     assert(GlueApp.hasOverTwoAces(player_cards))
   }
+
+  it should "get the figure score" in {
+    val player_cards =
+      "[\"10_of_hearts\",\"2_of_hearts\",\"14_of_spades\",\"13_of_spades\",\"12_of_spades\",\"14_of_diamonds\",\"13_of_diamonds\"" +
+        "\"12_of_diamonds\",\"10_of_diamonds\",\"8_of_diamonds\",\"3_of_diamonds\",\"14_of_clubs\",\"12_of_clubs\"," +
+        "\"8_of_clubs\"]"
+    val figure_score = GlueApp.getFiguresScore(player_cards)
+    assert(figure_score == 24)
+  }
+
+  it should "know if you had 1 figure" in {
+    val player_cards =
+      "[\"10_of_hearts\",\"2_of_hearts\",\"10_of_spades\"" +
+        "\"12_of_diamonds\",\"10_of_diamonds\",\"8_of_diamonds\",\"3_of_diamonds\",\"10_of_clubs\",\"10_of_clubs\"," +
+        "\"8_of_clubs\"]"
+    assert(GlueApp.hadLessThanTwoFigures(player_cards))
+  }
+
+  it should "get tarnib figures count" in {
+    val player_cards =
+      "[\"10_of_hearts\",\"2_of_hearts\",\"14_of_spades\",\"13_of_spades\",\"12_of_spades\",\"14_of_diamonds\",\"13_of_diamonds\"" +
+        "\"12_of_diamonds\",\"10_of_diamonds\",\"8_of_diamonds\",\"3_of_diamonds\",\"14_of_clubs\",\"12_of_clubs\"," +
+        "\"8_of_clubs\"]"
+    val figure_count = GlueApp.getTarnibFiguresCount(player_cards, "diamonds")
+    assert(figure_count == 3)
+  }
 }
