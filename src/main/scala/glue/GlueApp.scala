@@ -6,7 +6,7 @@ import com.amazonaws.services.glue.util.Job
 import com.amazonaws.services.glue.util.GlueArgParser
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.{SparkSession, functions}
-import org.apache.spark.sql.functions.{col, lit, lower, udf, when}
+import org.apache.spark.sql.functions.{array_contains, col, lit, lower, udf, when}
 
 import scala.collection.JavaConverters._
 
@@ -24,7 +24,7 @@ object GlueApp {
     println("Initializing Spark and GlueContext")
     val sparkSession: SparkSession =
       if (args("stage") == "dev") { // For testing, we need to use local execution. You need Java JDK 8 for this to work!
-        SparkSession.builder().master("local[*]").getOrCreate()
+        SparkSession.builder().master("local[*]").config("spark.driver.bindAddress", "127.0.0.1").getOrCreate()
       } else {
         SparkSession.builder().getOrCreate()
       }
@@ -44,213 +44,396 @@ object GlueApp {
     val getSuitsWithOverOneFigureUdf = udf((cards: String) => getSuitsWithOverOneFigure(cards))
     val getOverTwoAcesCount = udf((cards: String) => if (hasOverTwoAces(cards)) 1 else 0)
     val getLessThanTwoFiguresCount = udf((cards: String) => if (hadLessThanTwoFigures(cards)) 1 else 0)
+    val getTarnibFiguresCountUdf = udf((cards: String, tarnib: String) => getTarnibFiguresCount(cards, tarnib))
+    val hasOverThreePartnersTarnibCount = udf((cards: String, tarnib: String, bidsData: String, player_pair: String) =>
+      if (hasOverThreePartnersTarnib(cards, tarnib, bidsData, player_pair)) 1 else 0)
+    val hasOverThreeEnemyTarnibCount = udf((cards: String, tarnib: String, bidsData: String, player_pair: String) =>
+      if (hasOverThreeEnemyTarnib(cards, tarnib, bidsData, player_pair)) 1 else 0)
     val getFigureScoreUdf = udf((cards: String) => getFiguresScore(cards))
     val getSuitsWithOverFiveCardsCountUdf: UserDefinedFunction = udf(
       (cards: String) => getSuitsWithOverFiveCardsCount(cards))
 
+    // All names used by each player
+    val rayanNames = Array("mugiwara")
+    val faresNames = Array("blegess")
+    val jackNames = Array("wave master")
+    val jadNames = Array("jemba")
+    val valid_players = rayanNames ++ faresNames ++ jackNames ++ jadNames
+
     // Read JSON data from S3 and load it into a DataFrame
     var jsonDataFrame = sparkSession.read
       .json("s3://tarnib-analytics-bucket/raw_json_data/tarnib-analytics.json")
-      .filter(col("team_1_score") + col("team_2_score") === 13) // Only keep rounds that were played entirely
+      // Only keep rounds that were played entirely
+      .filter(col("team_1_score") + col("team_2_score") === 13)
+      .filter(array_contains(lit(valid_players), lower(col("player_1"))) && array_contains(
+        lit(valid_players),
+        lower(col("player_2"))) && array_contains(lit(valid_players), lower(col("player_3"))) && array_contains(
+        lit(valid_players),
+        lower(col("player_4"))))
       .withColumn("player_1_team_figures_count", getTeamFiguresCountUdf(col("player_1_cards"), col("player_3_cards")))
       .withColumn("player_2_team_figures_count", getTeamFiguresCountUdf(col("player_2_cards"), col("player_4_cards")))
       .withColumn("player_3_team_figures_count", getTeamFiguresCountUdf(col("player_3_cards"), col("player_1_cards")))
       .withColumn("player_4_team_figures_count", getTeamFiguresCountUdf(col("player_4_cards"), col("player_2_cards")))
+      .withColumn("player_1_has_over_3_partner_tarnib_count",
+                  hasOverThreePartnersTarnibCount(col("player_1_cards"), col("tarnib"), col("bids_data"), lit("1_3")))
+      .withColumn("player_2_has_over_3_partner_tarnib_count",
+                  hasOverThreePartnersTarnibCount(col("player_2_cards"), col("tarnib"), col("bids_data"), lit("2_4")))
+      .withColumn("player_3_has_over_3_partner_tarnib_count",
+                  hasOverThreePartnersTarnibCount(col("player_3_cards"), col("tarnib"), col("bids_data"), lit("3_1")))
+      .withColumn("player_4_has_over_3_partner_tarnib_count",
+                  hasOverThreePartnersTarnibCount(col("player_4_cards"), col("tarnib"), col("bids_data"), lit("4_2")))
+      .withColumn("player_1_has_over_3_enemy_tarnib_count",
+                  hasOverThreeEnemyTarnibCount(col("player_1_cards"), col("tarnib"), col("bids_data"), lit("2_4")))
+      .withColumn("player_2_has_over_3_enemy_tarnib_count",
+                  hasOverThreeEnemyTarnibCount(col("player_2_cards"), col("tarnib"), col("bids_data"), lit("1_3")))
+      .withColumn("player_3_has_over_3_enemy_tarnib_count",
+                  hasOverThreeEnemyTarnibCount(col("player_3_cards"), col("tarnib"), col("bids_data"), lit("2_4")))
+      .withColumn("player_4_has_over_3_enemy_tarnib_count",
+                  hasOverThreeEnemyTarnibCount(col("player_4_cards"), col("tarnib"), col("bids_data"), lit("1_3")))
       .withColumn(
         "rayan_figures_count",
-        when(lower(col("player_1")) === "mugiwara", getFiguresCountUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "mugiwara", getFiguresCountUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "mugiwara", getFiguresCountUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "mugiwara", getFiguresCountUdf(col("player_4_cards")))
+        when(array_contains(lit(rayanNames), lower(col("player_1"))), getFiguresCountUdf(col("player_1_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_2"))), getFiguresCountUdf(col("player_2_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_3"))), getFiguresCountUdf(col("player_3_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_4"))), getFiguresCountUdf(col("player_4_cards")))
       )
       .withColumn(
         "fares_figures_count",
-        when(lower(col("player_1")) === "blegess", getFiguresCountUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "blegess", getFiguresCountUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "blegess", getFiguresCountUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "blegess", getFiguresCountUdf(col("player_4_cards")))
+        when(array_contains(lit(faresNames), lower(col("player_1"))), getFiguresCountUdf(col("player_1_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_2"))), getFiguresCountUdf(col("player_2_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_3"))), getFiguresCountUdf(col("player_3_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_4"))), getFiguresCountUdf(col("player_4_cards")))
       )
       .withColumn(
         "jack_figures_count",
-        when(lower(col("player_1")) === "wave master", getFiguresCountUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "wave master", getFiguresCountUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "wave master", getFiguresCountUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "wave master", getFiguresCountUdf(col("player_4_cards")))
+        when(array_contains(lit(jackNames), lower(col("player_1"))), getFiguresCountUdf(col("player_1_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_2"))), getFiguresCountUdf(col("player_2_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_3"))), getFiguresCountUdf(col("player_3_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_4"))), getFiguresCountUdf(col("player_4_cards")))
       )
       .withColumn(
         "jad_figures_count",
-        when(lower(col("player_1")) === "jemba", getFiguresCountUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "jemba", getFiguresCountUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "jemba", getFiguresCountUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "jemba", getFiguresCountUdf(col("player_4_cards")))
+        when(array_contains(lit(jadNames), lower(col("player_1"))), getFiguresCountUdf(col("player_1_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_2"))), getFiguresCountUdf(col("player_2_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_3"))), getFiguresCountUdf(col("player_3_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_4"))), getFiguresCountUdf(col("player_4_cards")))
       )
       .withColumn(
         "rayan_figures_score",
-        when(lower(col("player_1")) === "mugiwara", getFigureScoreUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "mugiwara", getFigureScoreUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "mugiwara", getFigureScoreUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "mugiwara", getFigureScoreUdf(col("player_4_cards")))
+        when(array_contains(lit(rayanNames), lower(col("player_1"))), getFigureScoreUdf(col("player_1_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_2"))), getFigureScoreUdf(col("player_2_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_3"))), getFigureScoreUdf(col("player_3_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_4"))), getFigureScoreUdf(col("player_4_cards")))
       )
       .withColumn(
         "fares_figures_score",
-        when(lower(col("player_1")) === "blegess", getFigureScoreUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "blegess", getFigureScoreUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "blegess", getFigureScoreUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "blegess", getFigureScoreUdf(col("player_4_cards")))
+        when(array_contains(lit(faresNames), lower(col("player_1"))), getFigureScoreUdf(col("player_1_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_2"))), getFigureScoreUdf(col("player_2_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_3"))), getFigureScoreUdf(col("player_3_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_4"))), getFigureScoreUdf(col("player_4_cards")))
       )
       .withColumn(
         "jack_figures_score",
-        when(lower(col("player_1")) === "wave master", getFigureScoreUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "wave master", getFigureScoreUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "wave master", getFigureScoreUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "wave master", getFigureScoreUdf(col("player_4_cards")))
+        when(array_contains(lit(jackNames), lower(col("player_1"))), getFigureScoreUdf(col("player_1_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_2"))), getFigureScoreUdf(col("player_2_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_3"))), getFigureScoreUdf(col("player_3_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_4"))), getFigureScoreUdf(col("player_4_cards")))
       )
       .withColumn(
         "jad_figures_score",
-        when(lower(col("player_1")) === "jemba", getFigureScoreUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "jemba", getFigureScoreUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "jemba", getFigureScoreUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "jemba", getFigureScoreUdf(col("player_4_cards")))
+        when(array_contains(lit(jadNames), lower(col("player_1"))), getFigureScoreUdf(col("player_1_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_2"))), getFigureScoreUdf(col("player_2_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_3"))), getFigureScoreUdf(col("player_3_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_4"))), getFigureScoreUdf(col("player_4_cards")))
+      )
+      .withColumn(
+        "rayan_tarnib_figures_count",
+        when(array_contains(lit(rayanNames), lower(col("player_1"))),
+             getTarnibFiguresCountUdf(col("player_1_cards"), col("tarnib")))
+          .when(array_contains(lit(rayanNames), lower(col("player_2"))),
+                getTarnibFiguresCountUdf(col("player_2_cards"), col("tarnib")))
+          .when(array_contains(lit(rayanNames), lower(col("player_3"))),
+                getTarnibFiguresCountUdf(col("player_3_cards"), col("tarnib")))
+          .when(array_contains(lit(rayanNames), lower(col("player_4"))),
+                getTarnibFiguresCountUdf(col("player_4_cards"), col("tarnib")))
+      )
+      .withColumn(
+        "fares_tarnib_figures_count",
+        when(array_contains(lit(faresNames), lower(col("player_1"))),
+             getTarnibFiguresCountUdf(col("player_1_cards"), col("tarnib")))
+          .when(array_contains(lit(faresNames), lower(col("player_2"))),
+                getTarnibFiguresCountUdf(col("player_2_cards"), col("tarnib")))
+          .when(array_contains(lit(faresNames), lower(col("player_3"))),
+                getTarnibFiguresCountUdf(col("player_3_cards"), col("tarnib")))
+          .when(array_contains(lit(faresNames), lower(col("player_4"))),
+                getTarnibFiguresCountUdf(col("player_4_cards"), col("tarnib")))
+      )
+      .withColumn(
+        "jack_tarnib_figures_count",
+        when(array_contains(lit(jackNames), lower(col("player_1"))),
+             getTarnibFiguresCountUdf(col("player_1_cards"), col("tarnib")))
+          .when(array_contains(lit(jackNames), lower(col("player_2"))),
+                getTarnibFiguresCountUdf(col("player_2_cards"), col("tarnib")))
+          .when(array_contains(lit(jackNames), lower(col("player_3"))),
+                getTarnibFiguresCountUdf(col("player_3_cards"), col("tarnib")))
+          .when(array_contains(lit(jackNames), lower(col("player_4"))),
+                getTarnibFiguresCountUdf(col("player_4_cards"), col("tarnib")))
+      )
+      .withColumn(
+        "jad_tarnib_figures_count",
+        when(array_contains(lit(jadNames), lower(col("player_1"))),
+             getTarnibFiguresCountUdf(col("player_1_cards"), col("tarnib")))
+          .when(array_contains(lit(jadNames), lower(col("player_2"))),
+                getTarnibFiguresCountUdf(col("player_2_cards"), col("tarnib")))
+          .when(array_contains(lit(jadNames), lower(col("player_3"))),
+                getTarnibFiguresCountUdf(col("player_3_cards"), col("tarnib")))
+          .when(array_contains(lit(jadNames), lower(col("player_4"))),
+                getTarnibFiguresCountUdf(col("player_4_cards"), col("tarnib")))
       )
       .withColumn(
         "rayan_team_figures_count",
-        when(lower(col("player_1")) === "mugiwara", col("player_1_team_figures_count"))
-          .when(lower(col("player_2")) === "mugiwara", col("player_2_team_figures_count"))
-          .when(lower(col("player_3")) === "mugiwara", col("player_3_team_figures_count"))
-          .when(lower(col("player_4")) === "mugiwara", col("player_4_team_figures_count"))
+        when(array_contains(lit(rayanNames), lower(col("player_1"))), col("player_1_team_figures_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_2"))), col("player_2_team_figures_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_3"))), col("player_3_team_figures_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_4"))), col("player_4_team_figures_count"))
       )
       .withColumn(
         "fares_team_figures_count",
-        when(lower(col("player_1")) === "blegess", col("player_1_team_figures_count"))
-          .when(lower(col("player_2")) === "blegess", col("player_2_team_figures_count"))
-          .when(lower(col("player_3")) === "blegess", col("player_3_team_figures_count"))
-          .when(lower(col("player_4")) === "blegess", col("player_4_team_figures_count"))
+        when(array_contains(lit(faresNames), lower(col("player_1"))), col("player_1_team_figures_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_2"))), col("player_2_team_figures_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_3"))), col("player_3_team_figures_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_4"))), col("player_4_team_figures_count"))
       )
       .withColumn(
         "jack_team_figures_count",
-        when(lower(col("player_1")) === "wave master", col("player_1_team_figures_count"))
-          .when(lower(col("player_2")) === "wave master", col("player_2_team_figures_count"))
-          .when(lower(col("player_3")) === "wave master", col("player_3_team_figures_count"))
-          .when(lower(col("player_4")) === "wave master", col("player_4_team_figures_count"))
+        when(array_contains(lit(jackNames), lower(col("player_1"))), col("player_1_team_figures_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_2"))), col("player_2_team_figures_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_3"))), col("player_3_team_figures_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_4"))), col("player_4_team_figures_count"))
       )
       .withColumn(
         "jad_team_figures_count",
-        when(lower(col("player_1")) === "jemba", col("player_1_team_figures_count"))
-          .when(lower(col("player_2")) === "jemba", col("player_2_team_figures_count"))
-          .when(lower(col("player_3")) === "jemba", col("player_3_team_figures_count"))
-          .when(lower(col("player_4")) === "jemba", col("player_4_team_figures_count"))
+        when(array_contains(lit(jadNames), lower(col("player_1"))), col("player_1_team_figures_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_2"))), col("player_2_team_figures_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_3"))), col("player_3_team_figures_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_4"))), col("player_4_team_figures_count"))
+      )
+      .withColumn(
+        "rayan_over_3_partner_tarnib_count",
+        when(array_contains(lit(rayanNames), lower(col("player_1"))), col("player_1_has_over_3_partner_tarnib_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_2"))),
+                col("player_2_has_over_3_partner_tarnib_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_3"))),
+                col("player_3_has_over_3_partner_tarnib_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_4"))),
+                col("player_4_has_over_3_partner_tarnib_count"))
+      )
+      .withColumn(
+        "fares_over_3_partner_tarnib_count",
+        when(array_contains(lit(faresNames), lower(col("player_1"))), col("player_1_has_over_3_partner_tarnib_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_2"))),
+                col("player_2_has_over_3_partner_tarnib_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_3"))),
+                col("player_3_has_over_3_partner_tarnib_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_4"))),
+                col("player_4_has_over_3_partner_tarnib_count"))
+      )
+      .withColumn(
+        "jack_over_3_partner_tarnib_count",
+        when(array_contains(lit(jackNames), lower(col("player_1"))), col("player_1_has_over_3_partner_tarnib_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_2"))), col("player_2_has_over_3_partner_tarnib_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_3"))), col("player_3_has_over_3_partner_tarnib_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_4"))), col("player_4_has_over_3_partner_tarnib_count"))
+      )
+      .withColumn(
+        "jad_over_3_partner_tarnib_count",
+        when(array_contains(lit(jadNames), lower(col("player_1"))), col("player_1_has_over_3_partner_tarnib_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_2"))), col("player_2_has_over_3_partner_tarnib_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_3"))), col("player_3_has_over_3_partner_tarnib_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_4"))), col("player_4_has_over_3_partner_tarnib_count"))
       )
       .withColumn(
         "rayan_over_two_aces_count",
-        when(lower(col("player_1")) === "mugiwara", getOverTwoAcesCount(col("player_1_cards")))
-          .when(lower(col("player_2")) === "mugiwara", getOverTwoAcesCount(col("player_2_cards")))
-          .when(lower(col("player_3")) === "mugiwara", getOverTwoAcesCount(col("player_3_cards")))
-          .when(lower(col("player_4")) === "mugiwara", getOverTwoAcesCount(col("player_4_cards")))
+        when(array_contains(lit(rayanNames), lower(col("player_1"))), getOverTwoAcesCount(col("player_1_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_2"))), getOverTwoAcesCount(col("player_2_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_3"))), getOverTwoAcesCount(col("player_3_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_4"))), getOverTwoAcesCount(col("player_4_cards")))
       )
       .withColumn(
         "fares_over_two_aces_count",
-        when(lower(col("player_1")) === "blegess", getOverTwoAcesCount(col("player_1_cards")))
-          .when(lower(col("player_2")) === "blegess", getOverTwoAcesCount(col("player_2_cards")))
-          .when(lower(col("player_3")) === "blegess", getOverTwoAcesCount(col("player_3_cards")))
-          .when(lower(col("player_4")) === "blegess", getOverTwoAcesCount(col("player_4_cards")))
+        when(array_contains(lit(faresNames), lower(col("player_1"))), getOverTwoAcesCount(col("player_1_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_2"))), getOverTwoAcesCount(col("player_2_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_3"))), getOverTwoAcesCount(col("player_3_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_4"))), getOverTwoAcesCount(col("player_4_cards")))
       )
       .withColumn(
         "jack_over_two_aces_count",
-        when(lower(col("player_1")) === "wave master", getOverTwoAcesCount(col("player_1_cards")))
-          .when(lower(col("player_2")) === "wave master", getOverTwoAcesCount(col("player_2_cards")))
-          .when(lower(col("player_3")) === "wave master", getOverTwoAcesCount(col("player_3_cards")))
-          .when(lower(col("player_4")) === "wave master", getOverTwoAcesCount(col("player_4_cards")))
+        when(array_contains(lit(jackNames), lower(col("player_1"))), getOverTwoAcesCount(col("player_1_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_2"))), getOverTwoAcesCount(col("player_2_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_3"))), getOverTwoAcesCount(col("player_3_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_4"))), getOverTwoAcesCount(col("player_4_cards")))
       )
       .withColumn(
         "jad_over_two_aces_count",
-        when(lower(col("player_1")) === "jemba", getOverTwoAcesCount(col("player_1_cards")))
-          .when(lower(col("player_2")) === "jemba", getOverTwoAcesCount(col("player_2_cards")))
-          .when(lower(col("player_3")) === "jemba", getOverTwoAcesCount(col("player_3_cards")))
-          .when(lower(col("player_4")) === "jemba", getOverTwoAcesCount(col("player_4_cards")))
+        when(array_contains(lit(jadNames), lower(col("player_1"))), getOverTwoAcesCount(col("player_1_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_2"))), getOverTwoAcesCount(col("player_2_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_3"))), getOverTwoAcesCount(col("player_3_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_4"))), getOverTwoAcesCount(col("player_4_cards")))
+      )
+      .withColumn(
+        "rayan_over_3_enemy_tarnib_count",
+        when(array_contains(lit(rayanNames), lower(col("player_1"))), col("player_1_has_over_3_enemy_tarnib_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_2"))), col("player_2_has_over_3_enemy_tarnib_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_3"))), col("player_3_has_over_3_enemy_tarnib_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_4"))), col("player_4_has_over_3_enemy_tarnib_count"))
+      )
+      .withColumn(
+        "fares_over_3_enemy_tarnib_count",
+        when(array_contains(lit(faresNames), lower(col("player_1"))), col("player_1_has_over_3_enemy_tarnib_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_2"))), col("player_2_has_over_3_enemy_tarnib_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_3"))), col("player_3_has_over_3_enemy_tarnib_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_4"))), col("player_4_has_over_3_enemy_tarnib_count"))
+      )
+      .withColumn(
+        "jack_over_3_enemy_tarnib_count",
+        when(array_contains(lit(jackNames), lower(col("player_1"))), col("player_1_has_over_3_enemy_tarnib_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_2"))), col("player_2_has_over_3_enemy_tarnib_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_3"))), col("player_3_has_over_3_enemy_tarnib_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_4"))), col("player_4_has_over_3_enemy_tarnib_count"))
+      )
+      .withColumn(
+        "jad_over_3_enemy_tarnib_count",
+        when(array_contains(lit(jadNames), lower(col("player_1"))), col("player_1_has_over_3_enemy_tarnib_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_2"))), col("player_2_has_over_3_enemy_tarnib_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_3"))), col("player_3_has_over_3_enemy_tarnib_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_4"))), col("player_4_has_over_3_enemy_tarnib_count"))
       )
       .withColumn(
         "rayan_rounds_with_less_than_two_figures",
-        when(lower(col("player_1")) === "mugiwara", getLessThanTwoFiguresCount(col("player_1_cards")))
-          .when(lower(col("player_2")) === "mugiwara", getLessThanTwoFiguresCount(col("player_2_cards")))
-          .when(lower(col("player_3")) === "mugiwara", getLessThanTwoFiguresCount(col("player_3_cards")))
-          .when(lower(col("player_4")) === "mugiwara", getLessThanTwoFiguresCount(col("player_4_cards")))
+        when(array_contains(lit(rayanNames), lower(col("player_1"))), getLessThanTwoFiguresCount(col("player_1_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_2"))),
+                getLessThanTwoFiguresCount(col("player_2_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_3"))),
+                getLessThanTwoFiguresCount(col("player_3_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_4"))),
+                getLessThanTwoFiguresCount(col("player_4_cards")))
       )
       .withColumn(
         "fares_rounds_with_less_than_two_figures",
-        when(lower(col("player_1")) === "blegess", getLessThanTwoFiguresCount(col("player_1_cards")))
-          .when(lower(col("player_2")) === "blegess", getLessThanTwoFiguresCount(col("player_2_cards")))
-          .when(lower(col("player_3")) === "blegess", getLessThanTwoFiguresCount(col("player_3_cards")))
-          .when(lower(col("player_4")) === "blegess", getLessThanTwoFiguresCount(col("player_4_cards")))
+        when(array_contains(lit(faresNames), lower(col("player_1"))), getLessThanTwoFiguresCount(col("player_1_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_2"))),
+                getLessThanTwoFiguresCount(col("player_2_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_3"))),
+                getLessThanTwoFiguresCount(col("player_3_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_4"))),
+                getLessThanTwoFiguresCount(col("player_4_cards")))
       )
       .withColumn(
         "jack_rounds_with_less_than_two_figures",
-        when(lower(col("player_1")) === "wave master", getLessThanTwoFiguresCount(col("player_1_cards")))
-          .when(lower(col("player_2")) === "wave master", getLessThanTwoFiguresCount(col("player_2_cards")))
-          .when(lower(col("player_3")) === "wave master", getLessThanTwoFiguresCount(col("player_3_cards")))
-          .when(lower(col("player_4")) === "wave master", getLessThanTwoFiguresCount(col("player_4_cards")))
+        when(array_contains(lit(jackNames), lower(col("player_1"))), getLessThanTwoFiguresCount(col("player_1_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_2"))),
+                getLessThanTwoFiguresCount(col("player_2_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_3"))),
+                getLessThanTwoFiguresCount(col("player_3_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_4"))),
+                getLessThanTwoFiguresCount(col("player_4_cards")))
       )
       .withColumn(
         "jad_rounds_with_less_than_two_figures",
-        when(lower(col("player_1")) === "jemba", getLessThanTwoFiguresCount(col("player_1_cards")))
-          .when(lower(col("player_2")) === "jemba", getLessThanTwoFiguresCount(col("player_2_cards")))
-          .when(lower(col("player_3")) === "jemba", getLessThanTwoFiguresCount(col("player_3_cards")))
-          .when(lower(col("player_4")) === "jemba", getLessThanTwoFiguresCount(col("player_4_cards")))
+        when(array_contains(lit(jadNames), lower(col("player_1"))), getLessThanTwoFiguresCount(col("player_1_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_2"))),
+                getLessThanTwoFiguresCount(col("player_2_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_3"))),
+                getLessThanTwoFiguresCount(col("player_3_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_4"))),
+                getLessThanTwoFiguresCount(col("player_4_cards")))
       )
       .withColumn(
         "rayan_suits_over_five_cards",
-        when(lower(col("player_1")) === "mugiwara", getSuitsWithOverFiveCardsCountUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "mugiwara", getSuitsWithOverFiveCardsCountUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "mugiwara", getSuitsWithOverFiveCardsCountUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "mugiwara", getSuitsWithOverFiveCardsCountUdf(col("player_4_cards")))
+        when(array_contains(lit(rayanNames), lower(col("player_1"))),
+             getSuitsWithOverFiveCardsCountUdf(col("player_1_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_2"))),
+                getSuitsWithOverFiveCardsCountUdf(col("player_2_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_3"))),
+                getSuitsWithOverFiveCardsCountUdf(col("player_3_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_4"))),
+                getSuitsWithOverFiveCardsCountUdf(col("player_4_cards")))
       )
       .withColumn(
         "fares_suits_over_five_cards",
-        when(lower(col("player_1")) === "blegess", getSuitsWithOverFiveCardsCountUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "blegess", getSuitsWithOverFiveCardsCountUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "blegess", getSuitsWithOverFiveCardsCountUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "blegess", getSuitsWithOverFiveCardsCountUdf(col("player_4_cards")))
+        when(array_contains(lit(faresNames), lower(col("player_1"))),
+             getSuitsWithOverFiveCardsCountUdf(col("player_1_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_2"))),
+                getSuitsWithOverFiveCardsCountUdf(col("player_2_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_3"))),
+                getSuitsWithOverFiveCardsCountUdf(col("player_3_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_4"))),
+                getSuitsWithOverFiveCardsCountUdf(col("player_4_cards")))
       )
       .withColumn(
         "jack_suits_over_five_cards",
-        when(lower(col("player_1")) === "wave master", getSuitsWithOverFiveCardsCountUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "wave master", getSuitsWithOverFiveCardsCountUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "wave master", getSuitsWithOverFiveCardsCountUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "wave master", getSuitsWithOverFiveCardsCountUdf(col("player_4_cards")))
+        when(array_contains(lit(jackNames), lower(col("player_1"))),
+             getSuitsWithOverFiveCardsCountUdf(col("player_1_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_2"))),
+                getSuitsWithOverFiveCardsCountUdf(col("player_2_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_3"))),
+                getSuitsWithOverFiveCardsCountUdf(col("player_3_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_4"))),
+                getSuitsWithOverFiveCardsCountUdf(col("player_4_cards")))
       )
       .withColumn(
         "jad_suits_over_five_cards",
-        when(lower(col("player_1")) === "jemba", getSuitsWithOverFiveCardsCountUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "jemba", getSuitsWithOverFiveCardsCountUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "jemba", getSuitsWithOverFiveCardsCountUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "jemba", getSuitsWithOverFiveCardsCountUdf(col("player_4_cards")))
+        when(array_contains(lit(jadNames), lower(col("player_1"))),
+             getSuitsWithOverFiveCardsCountUdf(col("player_1_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_2"))),
+                getSuitsWithOverFiveCardsCountUdf(col("player_2_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_3"))),
+                getSuitsWithOverFiveCardsCountUdf(col("player_3_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_4"))),
+                getSuitsWithOverFiveCardsCountUdf(col("player_4_cards")))
       )
       .withColumn(
         "rayan_suits_with_over_one_figures",
-        when(lower(col("player_1")) === "mugiwara", getSuitsWithOverOneFigureUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "mugiwara", getSuitsWithOverOneFigureUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "mugiwara", getSuitsWithOverOneFigureUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "mugiwara", getSuitsWithOverOneFigureUdf(col("player_4_cards")))
+        when(array_contains(lit(rayanNames), lower(col("player_1"))),
+             getSuitsWithOverOneFigureUdf(col("player_1_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_2"))),
+                getSuitsWithOverOneFigureUdf(col("player_2_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_3"))),
+                getSuitsWithOverOneFigureUdf(col("player_3_cards")))
+          .when(array_contains(lit(rayanNames), lower(col("player_4"))),
+                getSuitsWithOverOneFigureUdf(col("player_4_cards")))
       )
       .withColumn(
         "fares_suits_with_over_one_figures",
-        when(lower(col("player_1")) === "blegess", getSuitsWithOverOneFigureUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "blegess", getSuitsWithOverOneFigureUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "blegess", getSuitsWithOverOneFigureUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "blegess", getSuitsWithOverOneFigureUdf(col("player_4_cards")))
+        when(array_contains(lit(faresNames), lower(col("player_1"))),
+             getSuitsWithOverOneFigureUdf(col("player_1_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_2"))),
+                getSuitsWithOverOneFigureUdf(col("player_2_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_3"))),
+                getSuitsWithOverOneFigureUdf(col("player_3_cards")))
+          .when(array_contains(lit(faresNames), lower(col("player_4"))),
+                getSuitsWithOverOneFigureUdf(col("player_4_cards")))
       )
       .withColumn(
         "jack_suits_with_over_one_figures",
-        when(lower(col("player_1")) === "wave master", getSuitsWithOverOneFigureUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "wave master", getSuitsWithOverOneFigureUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "wave master", getSuitsWithOverOneFigureUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "wave master", getSuitsWithOverOneFigureUdf(col("player_4_cards")))
+        when(array_contains(lit(jackNames), lower(col("player_1"))),
+             getSuitsWithOverOneFigureUdf(col("player_1_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_2"))),
+                getSuitsWithOverOneFigureUdf(col("player_2_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_3"))),
+                getSuitsWithOverOneFigureUdf(col("player_3_cards")))
+          .when(array_contains(lit(jackNames), lower(col("player_4"))),
+                getSuitsWithOverOneFigureUdf(col("player_4_cards")))
       )
       .withColumn(
         "jad_suits_with_over_one_figures",
-        when(lower(col("player_1")) === "jemba", getSuitsWithOverOneFigureUdf(col("player_1_cards")))
-          .when(lower(col("player_2")) === "jemba", getSuitsWithOverOneFigureUdf(col("player_2_cards")))
-          .when(lower(col("player_3")) === "jemba", getSuitsWithOverOneFigureUdf(col("player_3_cards")))
-          .when(lower(col("player_4")) === "jemba", getSuitsWithOverOneFigureUdf(col("player_4_cards")))
+        when(array_contains(lit(jadNames), lower(col("player_1"))), getSuitsWithOverOneFigureUdf(col("player_1_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_2"))),
+                getSuitsWithOverOneFigureUdf(col("player_2_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_3"))),
+                getSuitsWithOverOneFigureUdf(col("player_3_cards")))
+          .when(array_contains(lit(jadNames), lower(col("player_4"))),
+                getSuitsWithOverOneFigureUdf(col("player_4_cards")))
       )
 
     // Apply aggregation functions to the DataFrame's columns
@@ -267,6 +450,18 @@ object GlueApp {
         "fares_figures_score",
         "jack_figures_score",
         "jad_figures_score",
+        "rayan_tarnib_figures_count",
+        "fares_tarnib_figures_count",
+        "jack_tarnib_figures_count",
+        "jad_tarnib_figures_count",
+        "rayan_over_3_enemy_tarnib_count",
+        "fares_over_3_enemy_tarnib_count",
+        "jack_over_3_enemy_tarnib_count",
+        "jad_over_3_enemy_tarnib_count",
+        "rayan_over_3_partner_tarnib_count",
+        "fares_over_3_partner_tarnib_count",
+        "jack_over_3_partner_tarnib_count",
+        "jad_over_3_partner_tarnib_count",
         "rayan_team_figures_count",
         "fares_team_figures_count",
         "jad_team_figures_count",
@@ -310,8 +505,8 @@ object GlueApp {
     * @param cards - cards array string
     */
   def getFiguresCount(cards: String): Int = {
-    val occurrences = Seq("14", "13", "12", "11")
-    occurrences.map(card => card.r.findAllIn(cards).length).sum
+    val figures = Seq("14", "13", "12", "11")
+    figures.map(card => card.r.findAllIn(cards).length).sum
   }
 
   /**
@@ -320,8 +515,8 @@ object GlueApp {
     * @param cards - cards array string
     */
   def getSuitsWithOverFiveCardsCount(cards: String): Int = {
-    val occurrences = Seq("of_spades", "of_hearts", "of_clubs", "of_diamonds")
-    occurrences.map(card => if (card.r.findAllIn(cards).length > 5) 1 else 0).sum
+    val figures = Seq("of_spades", "of_hearts", "of_clubs", "of_diamonds")
+    figures.map(card => if (card.r.findAllIn(cards).length > 5) 1 else 0).sum
   }
 
   /**
@@ -366,8 +561,8 @@ object GlueApp {
     * @param cards
     */
   def getFiguresScore(cards: String): Int = {
-    val occurrences = Seq("11", "12", "13", "14")
-    occurrences.map(card => card.r.findAllIn(cards).length * (occurrences.indexOf(card) + 1)).sum
+    val figures = Seq("11", "12", "13", "14")
+    figures.map(card => card.r.findAllIn(cards).length * (figures.indexOf(card) + 1)).sum
   }
 
   /**
@@ -383,10 +578,46 @@ object GlueApp {
     * @param cards
     * @param tarnib
     */
-  // TODO: Add this to the dataframe
   def getTarnibFiguresCount(cards: String, tarnib: String): Int = {
     val figures = Seq(s"11_of_$tarnib", s"12_of_$tarnib", s"13_of_$tarnib", s"14_of_$tarnib")
     figures.map(card => card.r.findAllIn(cards).length).sum
+  }
+
+  /**
+    * Return true if the player has over 3 of his partners chosen tarnib, otherwise return false
+    * If the tarnib was not chosen by the partner, returns false
+    * @param cards
+    * @param tarnib
+    * @param bids_data
+    * @param player_pair - represents the current team player pair, ex: 1_3 (player 1 and player 3)
+    */
+  def hasOverThreePartnersTarnib(cards: String, tarnib: String, bids_data: String, player_pair: String): Boolean = {
+    // Get the player who picked the tarnib with +1 offset (if its 1, then its player_2 who picked)
+    val tarnib_picker = bids_data(bids_data.length - 2).toString.toInt + 1
+    val player = player_pair(0).toString.toInt // Get the current player
+
+    if (player == 1 && tarnib_picker == 3 || player == 2 && tarnib_picker == 4 || player == 3 && tarnib_picker == 1 || player == 4 && tarnib_picker == 1) {
+      if (tarnib.r.findAllIn(cards).length > 3) return true
+    }
+    false
+  }
+
+  /**
+    * Return true if the player has over 3 of his enemies chosen tarnib, otherwise return false
+    * If the tarnib was not chosen by an enemy player, returns false
+    * @param cards
+    * @param tarnib
+    * @param bids_data
+    * @param player_pair - represents the enemy team player pair, ex: 1_3 (player 1 and player 3)
+    */
+  def hasOverThreeEnemyTarnib(cards: String, tarnib: String, bids_data: String, enemy_player_pair: String): Boolean = {
+    // Get the player who picked the tarnib with +1 offset (if its 1, then its player_2 who picked)
+    val tarnib_picker = (bids_data(bids_data.length - 2).toString.toInt + 1).toString
+
+    if (enemy_player_pair.contains(tarnib_picker)) {
+      if (tarnib.r.findAllIn(cards).length > 3) return true
+    }
+    false
   }
 
 }

@@ -97,4 +97,44 @@ class GlueAppSpec extends AnyFlatSpec {
     val figure_count = GlueApp.getTarnibFiguresCount(player_cards, "diamonds")
     assert(figure_count == 3)
   }
+
+  it should "know if a player had over 3 times the tarnib of his partner" in {
+    val player_cards =
+      "[\"10_of_hearts\",\"2_of_hearts\",\"14_of_spades\",\"13_of_spades\",\"12_of_spades\",\"14_of_diamonds\",\"13_of_diamonds\"" +
+        "\"12_of_diamonds\",\"10_of_diamonds\",\"8_of_diamonds\",\"3_of_diamonds\",\"14_of_clubs\",\"12_of_clubs\"," +
+        "\"8_of_clubs\"]"
+    val hasOverThreePartnersTarnib = GlueApp.hasOverThreePartnersTarnib(player_cards,
+                                                                        "diamonds",
+                                                                        "{\"bids\":[-1,7,-1,-1],\"current_bidder\":2}",
+                                                                        "1_3")
+    assert(hasOverThreePartnersTarnib)
+
+    val hasOverThreePartnersTarnib2 = GlueApp.hasOverThreePartnersTarnib(player_cards,
+                                                                         "diamonds",
+                                                                         "{\"bids\":[-1,7,-1,-1],\"current_bidder\":1}",
+                                                                         "1_3")
+    assert(!hasOverThreePartnersTarnib2)
+
+    val hasOverThreePartnersTarnib3 =
+      GlueApp.hasOverThreePartnersTarnib(player_cards, "spades", "{\"bids\":[-1,7,-1,-1],\"current_bidder\":2}", "1_3")
+    assert(!hasOverThreePartnersTarnib3)
+  }
+
+  it should "know if a player had over 3 times the tarnib of the enemy" in {
+    val player_cards =
+      "[\"10_of_hearts\",\"2_of_hearts\",\"14_of_spades\",\"13_of_spades\",\"12_of_spades\",\"14_of_diamonds\",\"13_of_diamonds\"" +
+        "\"12_of_diamonds\",\"10_of_diamonds\",\"8_of_diamonds\",\"3_of_diamonds\",\"14_of_clubs\",\"12_of_clubs\"," +
+        "\"8_of_clubs\"]"
+    val hasOverThreeEnemyTarnib =
+      GlueApp.hasOverThreeEnemyTarnib(player_cards, "diamonds", "{\"bids\":[-1,7,-1,-1],\"current_bidder\":2}", "1_3")
+    assert(hasOverThreeEnemyTarnib)
+
+    val hasOverThreeEnemyTarnib2 =
+      GlueApp.hasOverThreeEnemyTarnib(player_cards, "diamonds", "{\"bids\":[-1,7,-1,-1],\"current_bidder\":1}", "1_3")
+    assert(!hasOverThreeEnemyTarnib2)
+
+    val hasOverThreeEnemyTarnib3 =
+      GlueApp.hasOverThreeEnemyTarnib(player_cards, "spades", "{\"bids\":[-1,7,-1,-1],\"current_bidder\":2}", "1_3")
+    assert(!hasOverThreeEnemyTarnib3)
+  }
 }
