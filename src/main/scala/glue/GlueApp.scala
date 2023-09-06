@@ -5,7 +5,7 @@ import org.apache.spark.SparkContext
 import com.amazonaws.services.glue.util.Job
 import com.amazonaws.services.glue.util.GlueArgParser
 import org.apache.spark.sql.expressions.UserDefinedFunction
-import org.apache.spark.sql.{SparkSession, functions}
+import org.apache.spark.sql.{SaveMode, SparkSession, functions}
 import org.apache.spark.sql.functions.{array_contains, col, lit, lower, udf, when}
 
 import scala.collection.JavaConverters._
@@ -560,6 +560,15 @@ object GlueApp {
         "jack_suits_with_over_one_figures",
         "jad_suits_with_over_one_figures",
       )
+
+    // Save the dataframe in S3 as a json file
+    aggregatedDF
+      .coalesce(1)
+      .write
+      .format("json")
+      .option("header", "true") // Optional: Write column names as the first row
+      .mode(SaveMode.Overwrite)
+      .save("s3://tarnib-analytics-bucket/analyzed-json-data")
 
     aggregatedDF.show(10)
     aggregatedDF.printSchema()
