@@ -47,8 +47,13 @@ object GlueApp {
     val getTarnibFiguresCountUdf = udf((cards: String, tarnib: String) => getTarnibFiguresCount(cards, tarnib))
     val hasOverThreePartnersTarnibCount = udf((cards: String, tarnib: String, bidsData: String, player_pair: String) =>
       if (hasOverThreePartnersTarnib(cards, tarnib, bidsData, player_pair)) 1 else 0)
-    val hasOverThreeEnemyTarnibCount = udf((cards: String, tarnib: String, bidsData: String, player_pair: String) =>
-      if (hasOverThreeEnemyTarnib(cards, tarnib, bidsData, player_pair)) 1 else 0)
+    val hasOverThreeEnemyTarnibCount = udf(
+      (cards: String, tarnib: String, bidsData: String, enemy_player_pair: String) =>
+        if (hasOverThreeEnemyTarnib(cards, tarnib, bidsData, enemy_player_pair)) 1 else 0)
+    val hasPartnerPickedTarnibCount = udf(
+      (bidsData: String, player_pair: String) => if (hasPartnerPickedTarnib(bidsData, player_pair)) 1 else 0)
+    val hasEnemyPickedTarnibCount = udf(
+      (bidsData: String, enemy_player_pair: String) => if (hasEnemyPickedTarnib(bidsData, enemy_player_pair)) 1 else 0)
     val getFigureScoreUdf = udf((cards: String) => getFiguresScore(cards))
     val getSuitsWithOverFiveCardsCountUdf: UserDefinedFunction = udf(
       (cards: String) => getSuitsWithOverFiveCardsCount(cards))
@@ -82,6 +87,10 @@ object GlueApp {
                   hasOverThreePartnersTarnibCount(col("player_3_cards"), col("tarnib"), col("bids_data"), lit("3_1")))
       .withColumn("player_4_has_over_3_partner_tarnib_count",
                   hasOverThreePartnersTarnibCount(col("player_4_cards"), col("tarnib"), col("bids_data"), lit("4_2")))
+      .withColumn("player_1_partner_picked_tarnib_count", hasPartnerPickedTarnibCount(col("bids_data"), lit("1_3")))
+      .withColumn("player_2_partner_picked_tarnib_count", hasPartnerPickedTarnibCount(col("bids_data"), lit("2_4")))
+      .withColumn("player_3_partner_picked_tarnib_count", hasPartnerPickedTarnibCount(col("bids_data"), lit("3_1")))
+      .withColumn("player_4_partner_picked_tarnib_count", hasPartnerPickedTarnibCount(col("bids_data"), lit("4_2")))
       .withColumn("player_1_has_over_3_enemy_tarnib_count",
                   hasOverThreeEnemyTarnibCount(col("player_1_cards"), col("tarnib"), col("bids_data"), lit("2_4")))
       .withColumn("player_2_has_over_3_enemy_tarnib_count",
@@ -90,6 +99,10 @@ object GlueApp {
                   hasOverThreeEnemyTarnibCount(col("player_3_cards"), col("tarnib"), col("bids_data"), lit("2_4")))
       .withColumn("player_4_has_over_3_enemy_tarnib_count",
                   hasOverThreeEnemyTarnibCount(col("player_4_cards"), col("tarnib"), col("bids_data"), lit("1_3")))
+      .withColumn("player_1_enemy_picked_tarnib_count", hasEnemyPickedTarnibCount(col("bids_data"), lit("2_4")))
+      .withColumn("player_2_enemy_picked_tarnib_count", hasEnemyPickedTarnibCount(col("bids_data"), lit("1_3")))
+      .withColumn("player_3_enemy_picked_tarnib_count", hasEnemyPickedTarnibCount(col("bids_data"), lit("2_4")))
+      .withColumn("player_4_enemy_picked_tarnib_count", hasEnemyPickedTarnibCount(col("bids_data"), lit("1_3")))
       .withColumn(
         "rayan_figures_count",
         when(array_contains(lit(rayanNames), lower(col("player_1"))), getFiguresCountUdf(col("player_1_cards")))
@@ -393,6 +406,34 @@ object GlueApp {
                 getSuitsWithOverFiveCardsCountUdf(col("player_4_cards")))
       )
       .withColumn(
+        "rayan_has_partner_picked_tarnib_count",
+        when(array_contains(lit(rayanNames), lower(col("player_1"))), col("player_1_partner_picked_tarnib_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_2"))), col("player_2_partner_picked_tarnib_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_3"))), col("player_3_partner_picked_tarnib_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_4"))), col("player_4_partner_picked_tarnib_count"))
+      )
+      .withColumn(
+        "fares_has_partner_picked_tarnib_count",
+        when(array_contains(lit(faresNames), lower(col("player_1"))), col("player_1_partner_picked_tarnib_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_2"))), col("player_2_partner_picked_tarnib_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_3"))), col("player_3_partner_picked_tarnib_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_4"))), col("player_4_partner_picked_tarnib_count"))
+      )
+      .withColumn(
+        "jack_has_partner_picked_tarnib_count",
+        when(array_contains(lit(jackNames), lower(col("player_1"))), col("player_1_partner_picked_tarnib_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_2"))), col("player_2_partner_picked_tarnib_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_3"))), col("player_3_partner_picked_tarnib_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_4"))), col("player_4_partner_picked_tarnib_count"))
+      )
+      .withColumn(
+        "jad_has_partner_picked_tarnib_count",
+        when(array_contains(lit(jadNames), lower(col("player_1"))), col("player_1_partner_picked_tarnib_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_2"))), col("player_2_partner_picked_tarnib_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_3"))), col("player_3_partner_picked_tarnib_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_4"))), col("player_4_partner_picked_tarnib_count"))
+      )
+      .withColumn(
         "rayan_suits_with_over_one_figures",
         when(array_contains(lit(rayanNames), lower(col("player_1"))),
              getSuitsWithOverOneFigureUdf(col("player_1_cards")))
@@ -435,6 +476,34 @@ object GlueApp {
           .when(array_contains(lit(jadNames), lower(col("player_4"))),
                 getSuitsWithOverOneFigureUdf(col("player_4_cards")))
       )
+      .withColumn(
+        "rayan_has_enemy_picked_tarnib_count",
+        when(array_contains(lit(rayanNames), lower(col("player_1"))), col("player_1_enemy_picked_tarnib_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_2"))), col("player_2_enemy_picked_tarnib_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_3"))), col("player_3_enemy_picked_tarnib_count"))
+          .when(array_contains(lit(rayanNames), lower(col("player_4"))), col("player_4_enemy_picked_tarnib_count"))
+      )
+      .withColumn(
+        "fares_has_enemy_picked_tarnib_count",
+        when(array_contains(lit(faresNames), lower(col("player_1"))), col("player_1_enemy_picked_tarnib_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_2"))), col("player_2_enemy_picked_tarnib_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_3"))), col("player_3_enemy_picked_tarnib_count"))
+          .when(array_contains(lit(faresNames), lower(col("player_4"))), col("player_4_enemy_picked_tarnib_count"))
+      )
+      .withColumn(
+        "jack_has_enemy_picked_tarnib_count",
+        when(array_contains(lit(jackNames), lower(col("player_1"))), col("player_1_enemy_picked_tarnib_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_2"))), col("player_2_enemy_picked_tarnib_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_3"))), col("player_3_enemy_picked_tarnib_count"))
+          .when(array_contains(lit(jackNames), lower(col("player_4"))), col("player_4_enemy_picked_tarnib_count"))
+      )
+      .withColumn(
+        "jad_has_enemy_picked_tarnib_count",
+        when(array_contains(lit(jadNames), lower(col("player_1"))), col("player_1_enemy_picked_tarnib_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_2"))), col("player_2_enemy_picked_tarnib_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_3"))), col("player_3_enemy_picked_tarnib_count"))
+          .when(array_contains(lit(jadNames), lower(col("player_4"))), col("player_4_enemy_picked_tarnib_count"))
+      )
 
     // Apply aggregation functions to the DataFrame's columns
     val aggregatedDF = jsonDataFrame
@@ -458,10 +527,18 @@ object GlueApp {
         "fares_over_3_enemy_tarnib_count",
         "jack_over_3_enemy_tarnib_count",
         "jad_over_3_enemy_tarnib_count",
+        "rayan_has_enemy_picked_tarnib_count",
+        "fares_has_enemy_picked_tarnib_count",
+        "jack_has_enemy_picked_tarnib_count",
+        "jad_has_enemy_picked_tarnib_count",
         "rayan_over_3_partner_tarnib_count",
         "fares_over_3_partner_tarnib_count",
         "jack_over_3_partner_tarnib_count",
         "jad_over_3_partner_tarnib_count",
+        "rayan_has_partner_picked_tarnib_count",
+        "fares_has_partner_picked_tarnib_count",
+        "jack_has_partner_picked_tarnib_count",
+        "jad_has_partner_picked_tarnib_count",
         "rayan_team_figures_count",
         "fares_team_figures_count",
         "jad_team_figures_count",
@@ -618,6 +695,32 @@ object GlueApp {
       if (tarnib.r.findAllIn(cards).length > 3) return true
     }
     false
+  }
+
+  /**
+    * Return true if the partner has picked the tarnib, false otherwise
+    * @param bids_data
+    * @param player_pair - represents the enemy team player pair, ex: 1_3 (player 1 and player 3)
+    */
+  def hasPartnerPickedTarnib(bids_data: String, player_pair: String): Boolean = {
+    // Get the player who picked the tarnib with +1 offset (if its 1, then its player_2 who picked)
+    val tarnib_picker = bids_data(bids_data.length - 2).toString.toInt + 1
+    val player = player_pair(0).toString.toInt // Get the current player
+
+    if (player == 1 && tarnib_picker == 3 || player == 2 && tarnib_picker == 4 || player == 3 && tarnib_picker == 1 || player == 4 && tarnib_picker == 1)
+      return true
+    else return false
+  }
+
+  /**
+    * Return true if any enemy player has picked the tarnib, false otherwise
+    * @param bids_data
+    * @param enemy_player_pair - represents the enemy team player pair, ex: 1_3 (player 1 and player 3)
+    */
+  def hasEnemyPickedTarnib(bids_data: String, enemy_player_pair: String): Boolean = {
+    // Get the player who picked the tarnib with +1 offset (if its 1, then its player_2 who picked)
+    val tarnib_picker = (bids_data(bids_data.length - 2).toString.toInt + 1).toString
+    if (enemy_player_pair.contains(tarnib_picker)) return true else return false
   }
 
 }

@@ -137,4 +137,20 @@ class GlueAppSpec extends AnyFlatSpec {
       GlueApp.hasOverThreeEnemyTarnib(player_cards, "spades", "{\"bids\":[-1,7,-1,-1],\"current_bidder\":2}", "1_3")
     assert(!hasOverThreeEnemyTarnib3)
   }
+
+  it should "know if a player partner picked tarnib" in {
+    val hasPartnerPickedTarnib = GlueApp.hasPartnerPickedTarnib("{\"bids\":[-1,7,-1,-1],\"current_bidder\":2}", "1_3")
+    assert(hasPartnerPickedTarnib)
+
+    val hasPartnerPickedTarnib2 = GlueApp.hasPartnerPickedTarnib("{\"bids\":[-1,7,-1,-1],\"current_bidder\":1}", "1_3")
+    assert(!hasPartnerPickedTarnib2)
+  }
+
+  it should "know if a player enemy picked tarnib" in {
+    val hasEnemyPickedTarnib = GlueApp.hasEnemyPickedTarnib("{\"bids\":[-1,7,-1,-1],\"current_bidder\":2}", "1_3")
+    assert(hasEnemyPickedTarnib)
+
+    val hasEnemyPickedTarnib2 = GlueApp.hasEnemyPickedTarnib("{\"bids\":[-1,7,-1,-1],\"current_bidder\":1}", "1_3")
+    assert(!hasEnemyPickedTarnib2)
+  }
 }
